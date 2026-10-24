@@ -19,7 +19,7 @@ from resume_screener.extractors import UnsupportedFormatError, extract_text
 from resume_screener.job import load_job
 from resume_screener.parser import parse_resume
 from resume_screener.ranking import rank, verdict
-from resume_screener.report import shortlist
+from resume_screener.report import shortlist, write_csv, write_markdown
 from resume_screener.scoring import score_resume
 
 
@@ -47,6 +47,14 @@ def main(argv=None) -> int:
     score_cmd.add_argument(
         "--min-score", type=float, default=None,
         help="Keep only candidates scoring at least this (0-100, inclusive)",
+    )
+    score_cmd.add_argument(
+        "--report-csv", default=None, metavar="PATH",
+        help="Write the ranked list (after filtering) to a CSV file",
+    )
+    score_cmd.add_argument(
+        "--report-md", default=None, metavar="PATH",
+        help="Write the ranked list (after filtering) to a Markdown file",
     )
     args = parser.parse_args(argv)
     if args.version:
@@ -114,6 +122,14 @@ def _cmd_score(args) -> int:
             print("error: --top must not be negative", file=sys.stderr)
             return 1
         ranked = ranked[: args.top]
+    try:
+        if args.report_csv:
+            write_csv(ranked, args.report_csv)
+        if args.report_md:
+            write_markdown(job.title or "Untitled role", ranked, args.report_md)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     if args.format == "json":
         payload = [
             {
