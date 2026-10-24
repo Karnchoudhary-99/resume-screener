@@ -9,6 +9,7 @@ them — with the reasons for each score visible, not just a number.
 - [x] Resume parsing (text/PDF/DOCX extraction, section detection)
 - [x] Scoring engine (skill match, experience fit, education fit)
 - [x] Ranking + explanations, CLI report
+- [x] Screening reports (shortlist, CSV/Markdown/JSON export, anonymized review)
 - [ ] Tests, README polish, then self-review checklist, then public
 
 ## Quick start
@@ -45,6 +46,42 @@ bands are ≥80 Strong, ≥60 Good, ≥40 Partial, below that Weak. Try it:
 2. Rahul Verma — 29.6/100 (Weak match)
    Missing: FastAPI, PostgreSQL, Docker
 ```
+
+## Screening reports
+
+The printed ranking is for a quick look; a hiring loop usually wants a
+file it can forward and a shortlist, not the whole pile:
+
+```bash
+python -m resume_screener score --job examples/job.json \
+  --min-score 60 \
+  --report-csv screening-report.csv \
+  --report-md screening-report.md \
+  --report-json screening-report.json \
+  examples/sample_resume.txt examples/sample_junior.txt
+```
+
+- **`--min-score N`** keeps only candidates scoring at least `N`
+  (0–100, inclusive). It applies before `--top` and before every
+  report file, so the files always match what the CLI printed.
+- **CSV** (`--report-csv`) has one row per candidate, best first:
+  rank, name, email, score, verdict, experience years, one percentage
+  column per component (blank when the job does not define that
+  component — blank means "not scored", never "scored zero"), and
+  matched / missing / preferred skills (`;`-separated).
+- **Markdown** (`--report-md`) opens with a summary (candidate count,
+  mean score, verdict distribution), then a ranked table, then one
+  section per candidate with the component breakdown and the reasons
+  behind the score.
+- **JSON** (`--report-json`) is the same payload as `--format json`,
+  written to a file instead of stdout.
+- **`--anonymize`** strips names, emails, phones, profile links and
+  source paths from the output and reports, relabelling candidates
+  `Candidate 1, 2, …` in ranked order — for a blind first review. It
+  never changes scores or order, only identities.
+
+See `docs/sample-report.md` for a report generated from the bundled
+samples (senior sample only clears the `--min-score 60` bar).
 
 ## Parsing
 
