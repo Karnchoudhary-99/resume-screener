@@ -1,0 +1,25 @@
+Asha Patel
+asha.patel@example.com | +91 98765 43210
+linkedin.com/in/ashapatel | github.com/ashapatel
+
+Summary
+Backend engineer with a focus on reliable APIs and data pipelines.
+
+Experience
+Senior Backend Engineer, Northwind Labs
+Jan 2021 - Present
+Built and operated payment APIs serving 2M requests a day.
+
+Backend Engineer, River Systems
+Jun 2019 - Dec 2020
+Shipped an event pipeline and cut reporting latency by half.
+
+Education
+BCA, State University
+2015 - 2019
+
+Skills
+Python, FastAPI, PostgreSQL, Docker, Redis, pytest
+
+Projects
+Order Tracker — a small service that tracks orders end to end.
