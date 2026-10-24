@@ -5,7 +5,7 @@ import csv
 import pytest
 
 from resume_screener.models import ContactInfo, Resume
-from resume_screener.report import shortlist
+from resume_screener.report import CSV_COLUMNS, shortlist, write_csv
 from resume_screener.scoring import Score
 
 
@@ -33,6 +33,29 @@ def test_shortlist_bounds():
     scores = [_score("Asha", 100.0), _score("Rahul", 0.0)]
     assert len(shortlist(scores, 0.0)) == 2
     assert len(shortlist(scores, 100.0)) == 1
+
+
+def test_csv_rows_ranked_with_header_and_blanks(tmp_path):
+    path = str(tmp_path / "report.csv")
+    write_csv([_score("Rahul", 29.6), _score("Asha", 100.0)], path)
+    # write_csv trusts the caller's order; ranking is the caller's job,
+    # so this checks the writer itself, not the ranking.
+    with open(path, newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert list(rows[0].keys()) == CSV_COLUMNS
+    assert rows[0]["rank"] == "1" and rows[0]["name"] == "Rahul"
+    assert rows[0]["skills_pct"] == "100.0"
+    assert rows[0]["experience_pct"] == ""  # not defined in fixture
+    assert rows[0]["missing_skills"] == "Docker"
+
+
+def test_csv_quotes_commas_in_names(tmp_path):
+    score = _score("Doe, Jane", 80.0)
+    path = str(tmp_path / "report.csv")
+    write_csv([score], path)
+    with open(path, newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["name"] == "Doe, Jane"
 
 
 def test_shortlist_rejects_out_of_range():

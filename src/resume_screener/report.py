@@ -14,9 +14,21 @@ silently empty or silently full list.
 
 from __future__ import annotations
 
+import csv
+
+from .ranking import verdict
 from .scoring import Score
 
-__all__ = ["shortlist"]
+__all__ = ["shortlist", "write_csv"]
+
+#: CSV columns, in order. Component columns are 0–100 percentages and
+#: are left blank when the job does not define that component, so a
+#: blank always means "not scored", never "scored zero".
+CSV_COLUMNS = [
+    "rank", "name", "email", "score", "verdict", "experience_years",
+    "skills_pct", "experience_pct", "education_pct",
+    "matched_skills", "missing_skills", "preferred_matched",
+]
 
 
 def shortlist(scores: list[Score], min_score: float) -> list[Score]:
@@ -28,3 +40,37 @@ def shortlist(scores: list[Score], min_score: float) -> list[Score]:
     if min_score != min_score or min_score < 0 or min_score > 100:
         raise ValueError("min_score must be a number between 0 and 100")
     return [s for s in scores if s.total >= min_score]
+
+
+def _pct(components: dict[str, float], name: str) -> str:
+    """A component as a 0–100 string, or blank when not scored."""
+    if name not in components:
+        return ""
+    return f"{components[name] * 100:.1f}"
+
+
+def _row(rank: int, score: Score) -> dict[str, str]:
+    """One CSV row for a ranked score; the csv module does the quoting."""
+    return {
+        "rank": str(rank),
+        "name": score.resume.name or score.resume.source,
+        "email": score.resume.email,
+        "score": f"{score.total:.1f}",
+        "verdict": verdict(score.total),
+        "experience_years": f"{score.resume.experience_years:g}",
+        "skills_pct": _pct(score.components, "skills"),
+        "experience_pct": _pct(score.components, "experience"),
+        "education_pct": _pct(score.components, "education"),
+        "matched_skills": "; ".join(score.matched_skills),
+        "missing_skills": "; ".join(score.missing_skills),
+        "preferred_matched": "; ".join(score.preferred_matched),
+    }
+
+
+def write_csv(scores: list[Score], path: str) -> None:
+    """Write ranked scores to ``path`` as CSV, best first, ranked 1..n."""
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        for rank, score in enumerate(scores, start=1):
+            writer.writerow(_row(rank, score))
