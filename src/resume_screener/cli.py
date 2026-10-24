@@ -123,7 +123,8 @@ def expand_resume_paths(inputs) -> list[str]:
     kept once, in first-seen order.
     """
     expanded: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = set()  # resolved paths, so the same file via
+    # two spellings (./x.txt vs x.txt) still counts once
     for raw in inputs:
         path = Path(raw)
         if path.is_dir():
@@ -137,12 +138,12 @@ def expand_resume_paths(inputs) -> list[str]:
                     f"no resume files in directory: {path}"
                 )
             for p in files:
-                if str(p) not in seen:
-                    seen.add(str(p))
+                if str(p.resolve()) not in seen:
+                    seen.add(str(p.resolve()))
                     expanded.append(str(p))
         elif path.is_file():
-            if str(path) not in seen:
-                seen.add(str(path))
+            if str(path.resolve()) not in seen:
+                seen.add(str(path.resolve()))
                 expanded.append(str(path))
         else:
             raise FileNotFoundError(f"resume file not found: {path}")
