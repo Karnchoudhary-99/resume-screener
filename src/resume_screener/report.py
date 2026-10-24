@@ -19,7 +19,7 @@ import csv
 from .ranking import verdict
 from .scoring import Score
 
-__all__ = ["shortlist", "write_csv"]
+__all__ = ["render_markdown", "shortlist", "write_csv", "write_markdown"]
 
 #: CSV columns, in order. Component columns are 0–100 percentages and
 #: are left blank when the job does not define that component, so a
@@ -65,6 +65,55 @@ def _row(rank: int, score: Score) -> dict[str, str]:
         "missing_skills": "; ".join(score.missing_skills),
         "preferred_matched": "; ".join(score.preferred_matched),
     }
+
+
+def _cell(text: str) -> str:
+    """Escape a value for a Markdown table cell."""
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def render_markdown(job_title: str, scores: list[Score]) -> str:
+    """Render ranked scores as a Markdown screening report.
+
+    A ranked table first (the short version a manager scans), then one
+    section per candidate with the reasons behind the score — the same
+    explanations the CLI prints, so the file never disagrees with it.
+    """
+    lines = [f"# Screening report: {job_title}", ""]
+    if not scores:
+        lines.append("No candidates were scored.")
+        return "\n".join(lines) + "\n"
+    lines.append("| Rank | Candidate | Score | Verdict | Experience |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for rank, score in enumerate(scores, start=1):
+        name = _cell(score.resume.name or score.resume.source)
+        lines.append(
+            f"| {rank} | {name} | {score.total:.1f} | "
+            f"{verdict(score.total)} | {score.resume.experience_years:g} years |"
+        )
+    for rank, score in enumerate(scores, start=1):
+        name = score.resume.name or score.resume.source
+        lines.append("")
+        lines.append(f"## {rank}. {name} — {score.total:.1f}/100 "
+                     f"({verdict(score.total)})")
+        if score.components:
+            breakdown = ", ".join(
+                f"{k} {v * 100:.0f}%" for k, v in score.components.items()
+            )
+            lines.append(f"Components: {breakdown}.")
+        if score.matched_skills:
+            lines.append(f"Matched: {', '.join(score.matched_skills)}.")
+        if score.missing_skills:
+            lines.append(f"Missing: {', '.join(score.missing_skills)}.")
+        for line in score.explanations:
+            lines.append(f"- {line}")
+    return "\n".join(lines) + "\n"
+
+
+def write_markdown(job_title: str, scores: list[Score], path: str) -> None:
+    """Write :func:`render_markdown` output to ``path``."""
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(render_markdown(job_title, scores))
 
 
 def write_csv(scores: list[Score], path: str) -> None:

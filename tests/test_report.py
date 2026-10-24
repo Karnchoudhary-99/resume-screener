@@ -5,7 +5,12 @@ import csv
 import pytest
 
 from resume_screener.models import ContactInfo, Resume
-from resume_screener.report import CSV_COLUMNS, shortlist, write_csv
+from resume_screener.report import (
+    CSV_COLUMNS,
+    render_markdown,
+    shortlist,
+    write_csv,
+)
 from resume_screener.scoring import Score
 
 
@@ -56,6 +61,24 @@ def test_csv_quotes_commas_in_names(tmp_path):
     with open(path, newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert rows[0]["name"] == "Doe, Jane"
+
+
+def test_markdown_report_table_and_details():
+    text = render_markdown("Backend Engineer", [_score("Asha", 100.0), _score("Rahul", 29.6)])
+    assert "# Screening report: Backend Engineer" in text
+    assert "| 1 | Asha | 100.0 | Strong match |" in text
+    assert "## 2. Rahul — 29.6/100 (Weak match)" in text
+    assert "Missing: Docker." in text
+    assert "Covers most required skills." in text
+
+
+def test_markdown_empty_report():
+    assert "No candidates were scored." in render_markdown("Role", [])
+
+
+def test_markdown_escapes_pipes():
+    text = render_markdown("Role", [_score("A | B", 80.0)])
+    assert "A \\| B" in text
 
 
 def test_shortlist_rejects_out_of_range():
