@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from dataclasses import asdict
 
 from resume_screener import __version__
@@ -35,7 +36,12 @@ def main(argv=None) -> int:
     )
     score_cmd = sub.add_parser("score", help="Score resumes against a job")
     score_cmd.add_argument("--job", required=True, help="Job JSON file")
-    score_cmd.add_argument("resumes", nargs="+", help="Resume files to rank")
+    score_cmd.add_argument(
+        "resumes",
+        nargs="+",
+        help="Resume files to rank (a directory expands to its "
+        ".txt/.md/.docx/.pdf files, sorted by name)",
+    )
     score_cmd.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
@@ -101,6 +107,48 @@ def _cmd_parse(args) -> int:
     return 0
 
 
+SUPPORTED_RESUME_SUFFIXES = {".txt", ".md", ".docx", ".pdf"}
+
+
+def expand_resume_paths(inputs) -> list[str]:
+    """Expand score-CLI inputs to resume files.
+
+    A plain file passes through unchanged. A directory expands to the
+    supported resume files directly inside it (not recursive), sorted
+    by file name, so a whole folder of applicants scores in one call.
+    Other entries inside a directory are skipped, not errors — a folder
+    may hold notes or exports next to the resumes. An empty directory
+    and a missing path are errors, so a typo never silently scores
+    nothing. Duplicates (a file given twice, or inside two dirs) are
+    kept once, in first-seen order.
+    """
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for raw in inputs:
+        path = Path(raw)
+        if path.is_dir():
+            files = sorted(
+                (p for p in path.iterdir() if p.is_file()),
+                key=lambda p: p.name.lower(),
+            )
+            files = [p for p in files if p.suffix.lower() in SUPPORTED_RESUME_SUFFIXES]
+            if not files:
+                raise FileNotFoundError(
+                    f"no resume files in directory: {path}"
+                )
+            for p in files:
+                if str(p) not in seen:
+                    seen.add(str(p))
+                    expanded.append(str(p))
+        elif path.is_file():
+            if str(path) not in seen:
+                seen.add(str(path))
+                expanded.append(str(path))
+        else:
+            raise FileNotFoundError(f"resume file not found: {path}")
+    return expanded
+
+
 def _json_payload(ranked) -> list:
     """The ranked list as JSON-ready dicts (stdout and --report-json share it)."""
     return [
@@ -126,8 +174,13 @@ def _cmd_score(args) -> int:
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    try:
+        resume_paths = expand_resume_paths(args.resumes)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     scores = []
-    for path in args.resumes:
+    for path in resume_paths:
         try:
             text = extract_text(path)
         except FileNotFoundError as exc:
