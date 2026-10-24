@@ -11,7 +11,7 @@ them — with the reasons for each score visible, not just a number.
 - [x] Ranking + explanations, CLI report
 - [x] Screening reports (shortlist, CSV/Markdown/JSON export, anonymized review)
 - [x] Directory screening (score a whole folder in one call)
-- [ ] Tests, README polish, then self-review checklist, then public
+- [x] Tests, README polish, self-review checklist, public
 
 ## Quick start
 
