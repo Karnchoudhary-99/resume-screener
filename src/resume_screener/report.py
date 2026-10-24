@@ -19,7 +19,11 @@ import csv
 from .ranking import verdict
 from .scoring import Score
 
-__all__ = ["render_markdown", "shortlist", "write_csv", "write_markdown"]
+__all__ = ["render_markdown", "shortlist", "summary", "write_csv", "write_markdown"]
+
+#: Verdict bands in strongest-first order, for summary presentation.
+_VERDICT_ORDER = ["Strong match", "Good match", "Partial match", "Weak match"]
+
 
 #: CSV columns, in order. Component columns are 0–100 percentages and
 #: are left blank when the job does not define that component, so a
@@ -67,6 +71,35 @@ def _row(rank: int, score: Score) -> dict[str, str]:
     }
 
 
+def summary(scores: list[Score]) -> dict:
+    """Aggregate statistics for a ranked list: count, mean score, the
+    number of candidates per verdict band, and the mean of each scored
+    component (over only the candidates who were scored on it)."""
+    if not scores:
+        return {
+            "count": 0, "mean_score": 0.0,
+            "verdict_counts": {}, "mean_components": {},
+        }
+    verdict_counts: dict[str, int] = {}
+    component_sums: dict[str, float] = {}
+    component_counts: dict[str, int] = {}
+    for score in scores:
+        band = verdict(score.total)
+        verdict_counts[band] = verdict_counts.get(band, 0) + 1
+        for name, value in score.components.items():
+            component_sums[name] = component_sums.get(name, 0.0) + value
+            component_counts[name] = component_counts.get(name, 0) + 1
+    return {
+        "count": len(scores),
+        "mean_score": round(sum(s.total for s in scores) / len(scores), 1),
+        "verdict_counts": verdict_counts,
+        "mean_components": {
+            name: round(component_sums[name] / component_counts[name], 3)
+            for name in component_sums
+        },
+    }
+
+
 def _cell(text: str) -> str:
     """Escape a value for a Markdown table cell."""
     return text.replace("|", "\\|").replace("\n", " ")
@@ -83,6 +116,17 @@ def render_markdown(job_title: str, scores: list[Score]) -> str:
     if not scores:
         lines.append("No candidates were scored.")
         return "\n".join(lines) + "\n"
+    stats = summary(scores)
+    lines.append(
+        f"Candidates: {stats['count']} · Mean score: {stats['mean_score']:.1f}"
+    )
+    ordered = [
+        f"{band} ×{stats['verdict_counts'][band]}"
+        for band in _VERDICT_ORDER if band in stats["verdict_counts"]
+    ]
+    if ordered:
+        lines.append("Verdicts: " + ", ".join(ordered) + ".")
+    lines.append("")
     lines.append("| Rank | Candidate | Score | Verdict | Experience |")
     lines.append("| --- | --- | --- | --- | --- |")
     for rank, score in enumerate(scores, start=1):

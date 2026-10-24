@@ -9,6 +9,7 @@ from resume_screener.report import (
     CSV_COLUMNS,
     render_markdown,
     shortlist,
+    summary,
     write_csv,
 )
 from resume_screener.scoring import Score
@@ -79,6 +80,22 @@ def test_markdown_empty_report():
 def test_markdown_escapes_pipes():
     text = render_markdown("Role", [_score("A | B", 80.0)])
     assert "A \\| B" in text
+
+
+def test_summary_counts_and_means():
+    stats = summary([_score("Asha", 100.0), _score("Rahul", 60.0, {"skills": 0.5, "experience": 1.0})])
+    assert stats["count"] == 2
+    assert stats["mean_score"] == 80.0
+    assert stats["verdict_counts"] == {"Strong match": 1, "Good match": 1}
+    assert stats["mean_components"]["skills"] == 0.75
+    assert stats["mean_components"]["experience"] == 1.0  # only Rahul scored it
+
+
+def test_summary_empty_and_markdown_summary_line():
+    assert summary([])["count"] == 0
+    text = render_markdown("Role", [_score("Asha", 100.0), _score("Rahul", 60.0)])
+    assert "Candidates: 2 · Mean score: 80.0" in text
+    assert "Verdicts: Strong match ×1, Good match ×1." in text
 
 
 def test_shortlist_rejects_out_of_range():
