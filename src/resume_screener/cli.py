@@ -4,6 +4,7 @@ Usage:
 
     resume-screener parse resume.txt
     resume-screener parse resume.pdf --format json
+    resume-screener score --job job.json resume1.txt resume2.txt
 """
 
 from __future__ import annotations
@@ -15,7 +16,10 @@ from dataclasses import asdict
 
 from resume_screener import __version__
 from resume_screener.extractors import UnsupportedFormatError, extract_text
+from resume_screener.job import load_job
 from resume_screener.parser import parse_resume
+from resume_screener.ranking import rank, verdict
+from resume_screener.scoring import score_resume
 
 
 def main(argv=None) -> int:
@@ -28,12 +32,25 @@ def main(argv=None) -> int:
         "--format", choices=["text", "json"], default="text",
         help="Output format (default: text)",
     )
+    score_cmd = sub.add_parser("score", help="Score resumes against a job")
+    score_cmd.add_argument("--job", required=True, help="Job JSON file")
+    score_cmd.add_argument("resumes", nargs="+", help="Resume files to rank")
+    score_cmd.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Output format (default: text)",
+    )
+    score_cmd.add_argument(
+        "--top", type=int, default=None,
+        help="Show only the top N candidates",
+    )
     args = parser.parse_args(argv)
     if args.version:
         print(__version__)
         return 0
     if args.command == "parse":
         return _cmd_parse(args)
+    if args.command == "score":
+        return _cmd_score(args)
     parser.print_help()
     return 0
 
@@ -60,4 +77,64 @@ def _cmd_parse(args) -> int:
         print(f"Experience: {resume.experience_years} years")
         print(f"Skills: {', '.join(resume.skills) or '(none listed)'}")
         print(f"Sections: {', '.join(resume.sections) or '(none)'}")
+    return 0
+
+
+def _cmd_score(args) -> int:
+    try:
+        job = load_job(args.job)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    scores = []
+    for path in args.resumes:
+        try:
+            text = extract_text(path)
+        except FileNotFoundError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        except (UnsupportedFormatError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        scores.append(score_resume(parse_resume(text, source=path), job))
+    ranked = rank(scores)
+    if args.top is not None:
+        if args.top < 0:
+            print("error: --top must not be negative", file=sys.stderr)
+            return 1
+        ranked = ranked[: args.top]
+    if args.format == "json":
+        payload = [
+            {
+                "rank": i + 1,
+                "name": s.resume.name or s.resume.source,
+                "email": s.resume.email,
+                "score": s.total,
+                "verdict": verdict(s.total),
+                "components": s.components,
+                "matched_skills": s.matched_skills,
+                "missing_skills": s.missing_skills,
+                "preferred_matched": s.preferred_matched,
+                "explanations": s.explanations,
+            }
+            for i, s in enumerate(ranked)
+        ]
+        print(json.dumps(payload, indent=2))
+        return 0
+    title = job.title or "Untitled role"
+    print(f"Ranking for: {title} ({len(ranked)} candidate(s))")
+    for i, s in enumerate(ranked, start=1):
+        name = s.resume.name or s.resume.source
+        print(f"\n{i}. {name} — {s.total:.1f}/100 ({verdict(s.total)})")
+        if s.components:
+            breakdown = ", ".join(
+                f"{k} {v * 100:.0f}%" for k, v in s.components.items()
+            )
+            print(f"   Components: {breakdown}")
+        if s.matched_skills:
+            print(f"   Matched: {', '.join(s.matched_skills)}")
+        if s.missing_skills:
+            print(f"   Missing: {', '.join(s.missing_skills)}")
+        for line in s.explanations:
+            print(f"   - {line}")
     return 0
