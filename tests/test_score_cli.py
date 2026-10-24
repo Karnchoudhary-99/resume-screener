@@ -156,11 +156,13 @@ def test_score_cli_expands_directory(tmp_path, capsys):
     assert out.index("Asha Patel") < out.index("Rahul Verma")
 
 
-def test_score_cli_directory_dedupes_same_file(tmp_path, capsys):
+def test_score_cli_directory_dedupes_same_file(tmp_path, capsys, monkeypatch):
     job = _write(tmp_path, "job.json", json.dumps(JOB))
-    senior = _write(tmp_path, "senior.txt", SENIOR)
-    assert main(["score", "--job", job, senior, f"./{senior}"]) == 0
-    # Path spelling differs but resolves to the same file: scored once.
+    _write(tmp_path, "senior.txt", SENIOR)
+    monkeypatch.chdir(tmp_path)
+    # Same file via two spellings ("senior.txt" vs "./senior.txt"):
+    # scored once, not twice.
+    assert main(["score", "--job", job, "senior.txt", "./senior.txt"]) == 0
     assert "1 candidate(s)" in capsys.readouterr().out
 
 
