@@ -10,6 +10,7 @@ them — with the reasons for each score visible, not just a number.
 - [x] Scoring engine (skill match, experience fit, education fit)
 - [x] Ranking + explanations, CLI report
 - [x] Screening reports (shortlist, CSV/Markdown/JSON export, anonymized review)
+- [x] Directory screening (score a whole folder in one call)
 - [ ] Tests, README polish, then self-review checklist, then public
 
 ## Quick start
@@ -83,6 +84,20 @@ python -m resume_screener score --job examples/job.json \
 See `docs/sample-report.md` for a report generated from the bundled
 samples (senior sample only clears the `--min-score 60` bar).
 
+## Screening a folder
+
+Pass a directory instead of individual files and every supported
+resume inside it (`.txt`, `.md`, `.docx`, `.pdf`) is scored, sorted
+by file name. Other files in the folder are ignored; an empty folder
+is an error, so a typo never silently scores nothing:
+
+```bash
+python -m resume_screener score --job examples/job.json applicants/
+```
+
+Directories and files mix freely, and the same resume given twice
+(by any path spelling) is scored once.
+
 ## Parsing
 
 Parsing is stdlib-only — no third-party dependencies:
@@ -101,8 +116,6 @@ Parsing is stdlib-only — no third-party dependencies:
 - **Experience:** date ranges in the experience section summed by
   month (`Jan 2021 - Present` uses today's date; pass `as_of` in code
   for deterministic results).
-
-## License
 
 ## License
 
