@@ -7,6 +7,7 @@ import pytest
 from resume_screener.models import ContactInfo, Resume
 from resume_screener.report import (
     CSV_COLUMNS,
+    anonymize,
     render_markdown,
     shortlist,
     summary,
@@ -96,6 +97,17 @@ def test_summary_empty_and_markdown_summary_line():
     text = render_markdown("Role", [_score("Asha", 100.0), _score("Rahul", 60.0)])
     assert "Candidates: 2 · Mean score: 80.0" in text
     assert "Verdicts: Strong match ×1, Good match ×1." in text
+
+
+def test_anonymize_strips_identity_without_mutating_original():
+    original = [_score("Asha", 100.0), _score("Rahul", 60.0)]
+    anon = anonymize(original)
+    assert [s.resume.name for s in anon] == ["Candidate 1", "Candidate 2"]
+    assert all(s.resume.email == "" and s.resume.source == "" for s in anon)
+    assert [s.total for s in anon] == [100.0, 60.0]
+    assert original[0].resume.name == "Asha"  # original untouched
+    text = render_markdown("Role", anon)
+    assert "Asha" not in text and "Candidate 1" in text
 
 
 def test_shortlist_rejects_out_of_range():

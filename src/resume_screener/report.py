@@ -15,11 +15,15 @@ silently empty or silently full list.
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 
 from .ranking import verdict
 from .scoring import Score
 
-__all__ = ["render_markdown", "shortlist", "summary", "write_csv", "write_markdown"]
+__all__ = [
+    "anonymize", "render_markdown", "shortlist", "summary",
+    "write_csv", "write_markdown",
+]
 
 #: Verdict bands in strongest-first order, for summary presentation.
 _VERDICT_ORDER = ["Strong match", "Good match", "Partial match", "Weak match"]
@@ -69,6 +73,24 @@ def _row(rank: int, score: Score) -> dict[str, str]:
         "missing_skills": "; ".join(score.missing_skills),
         "preferred_matched": "; ".join(score.preferred_matched),
     }
+
+
+def anonymize(scores: list[Score]) -> list[Score]:
+    """Return copies with identities stripped for blind review.
+
+    Ranked order is preserved, so "Candidate 1" is still the top scorer,
+    but names, emails, phones, profile links and source paths are gone.
+    The original scores are untouched — this builds new objects.
+    """
+    anonymized = []
+    for i, score in enumerate(scores, start=1):
+        contact = replace(
+            score.resume.contact, name=f"Candidate {i}", email="",
+            phone="", linkedin="", github="",
+        )
+        resume = replace(score.resume, contact=contact, source="")
+        anonymized.append(replace(score, resume=resume))
+    return anonymized
 
 
 def summary(scores: list[Score]) -> dict:
