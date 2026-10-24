@@ -1,0 +1,12 @@
+Rahul Verma
+rahul.verma@example.com
+
+Education
+BCA, City College
+2022 - 2025
+
+Skills
+Python, HTML, CSS
+
+Projects
+Portfolio Website — a personal site built with HTML and CSS.
