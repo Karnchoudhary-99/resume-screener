@@ -141,3 +141,34 @@ def test_score_cli_missing_job_fails(tmp_path, capsys):
     resume = _write(tmp_path, "r.txt", SENIOR)
     assert main(["score", "--job", str(tmp_path / "nope.json"), resume]) == 1
     assert "error" in capsys.readouterr().err
+
+
+def test_score_cli_expands_directory(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    folder = tmp_path / "applicants"
+    folder.mkdir()
+    (folder / "senior.txt").write_text(SENIOR)
+    (folder / "junior.txt").write_text(JUNIOR)
+    (folder / "notes.xyz").write_text("not a resume")
+    assert main(["score", "--job", job, str(folder)]) == 0
+    out = capsys.readouterr().out
+    assert "2 candidate(s)" in out
+    assert out.index("Asha Patel") < out.index("Rahul Verma")
+
+
+def test_score_cli_directory_dedupes_same_file(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    assert main(["score", "--job", job, senior, f"./{senior}"]) == 0
+    # Path spelling differs but resolves to the same file: scored once.
+    assert "1 candidate(s)" in capsys.readouterr().out
+
+
+def test_score_cli_empty_directory_and_missing_path_fail(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert main(["score", "--job", job, str(empty)]) == 1
+    assert "no resume files in directory" in capsys.readouterr().err
+    assert main(["score", "--job", job, str(tmp_path / "nope.txt")]) == 1
+    assert "not found" in capsys.readouterr().err
