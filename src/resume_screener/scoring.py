@@ -102,10 +102,11 @@ def _skill_mentioned(normalized: str, resume: Resume) -> bool:
     """True if a skill name appears in the resume's project/summary text.
 
     Word-boundary matching avoids "go" matching "good" or "r" matching
-    every word, and multi-word skills match as a phrase.
+    every word, and multi-word skills match as a phrase. Trailing
+    punctuation (e.g. "FastAPI.") still counts as a boundary.
     """
     text = " ".join(resume.sections.values()).lower()
-    pattern = r"(?<![a-z0-9.+])" + re.escape(normalized) + r"(?![a-z0-9.+])"
+    pattern = r"(?<![a-z0-9])" + re.escape(normalized) + r"(?![a-z0-9])"
     return re.search(pattern, text) is not None
 
 
