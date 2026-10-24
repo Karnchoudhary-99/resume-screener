@@ -123,6 +123,20 @@ def test_score_cli_report_files_match_filtered_ranking(tmp_path):
     assert "Candidates: 1" in md_text
 
 
+def test_score_cli_anonymize_and_report_json(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    junior = _write(tmp_path, "junior.txt", JUNIOR)
+    json_path = str(tmp_path / "report.json")
+    assert main(["score", "--job", job, "--anonymize",
+                 "--report-json", json_path, junior, senior]) == 0
+    out = capsys.readouterr().out
+    assert "Candidate 1" in out and "Asha Patel" not in out
+    payload = json.loads((tmp_path / "report.json").read_text())
+    assert payload[0]["name"] == "Candidate 1" and payload[0]["email"] == ""
+    assert payload[0]["score"] == 100.0
+
+
 def test_score_cli_missing_job_fails(tmp_path, capsys):
     resume = _write(tmp_path, "r.txt", SENIOR)
     assert main(["score", "--job", str(tmp_path / "nope.json"), resume]) == 1

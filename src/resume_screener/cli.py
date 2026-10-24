@@ -19,7 +19,7 @@ from resume_screener.extractors import UnsupportedFormatError, extract_text
 from resume_screener.job import load_job
 from resume_screener.parser import parse_resume
 from resume_screener.ranking import rank, verdict
-from resume_screener.report import shortlist, write_csv, write_markdown
+from resume_screener.report import anonymize, shortlist, write_csv, write_markdown
 from resume_screener.scoring import score_resume
 
 
@@ -55,6 +55,14 @@ def main(argv=None) -> int:
     score_cmd.add_argument(
         "--report-md", default=None, metavar="PATH",
         help="Write the ranked list (after filtering) to a Markdown file",
+    )
+    score_cmd.add_argument(
+        "--report-json", default=None, metavar="PATH",
+        help="Write the ranked list (after filtering) to a JSON file",
+    )
+    score_cmd.add_argument(
+        "--anonymize", action="store_true",
+        help="Strip names, emails and source paths (Candidate 1, 2, ...)",
     )
     args = parser.parse_args(argv)
     if args.version:
@@ -93,6 +101,25 @@ def _cmd_parse(args) -> int:
     return 0
 
 
+def _json_payload(ranked) -> list:
+    """The ranked list as JSON-ready dicts (stdout and --report-json share it)."""
+    return [
+        {
+            "rank": i + 1,
+            "name": s.resume.name or s.resume.source,
+            "email": s.resume.email,
+            "score": s.total,
+            "verdict": verdict(s.total),
+            "components": s.components,
+            "matched_skills": s.matched_skills,
+            "missing_skills": s.missing_skills,
+            "preferred_matched": s.preferred_matched,
+            "explanations": s.explanations,
+        }
+        for i, s in enumerate(ranked)
+    ]
+
+
 def _cmd_score(args) -> int:
     try:
         job = load_job(args.job)
@@ -122,31 +149,22 @@ def _cmd_score(args) -> int:
             print("error: --top must not be negative", file=sys.stderr)
             return 1
         ranked = ranked[: args.top]
+    if args.anonymize:
+        ranked = anonymize(ranked)
     try:
         if args.report_csv:
             write_csv(ranked, args.report_csv)
         if args.report_md:
             write_markdown(job.title or "Untitled role", ranked, args.report_md)
+        if args.report_json:
+            payload = _json_payload(ranked)
+            with open(args.report_json, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if args.format == "json":
-        payload = [
-            {
-                "rank": i + 1,
-                "name": s.resume.name or s.resume.source,
-                "email": s.resume.email,
-                "score": s.total,
-                "verdict": verdict(s.total),
-                "components": s.components,
-                "matched_skills": s.matched_skills,
-                "missing_skills": s.missing_skills,
-                "preferred_matched": s.preferred_matched,
-                "explanations": s.explanations,
-            }
-            for i, s in enumerate(ranked)
-        ]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(_json_payload(ranked), indent=2))
         return 0
     title = job.title or "Untitled role"
     print(f"Ranking for: {title} ({len(ranked)} candidate(s))")
