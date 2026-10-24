@@ -96,6 +96,47 @@ def test_score_cli_json_and_top(tmp_path, capsys):
     assert payload[0]["score"] == 100.0
 
 
+def test_score_cli_min_score_filters_and_validates(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    junior = _write(tmp_path, "junior.txt", JUNIOR)
+    assert main(["score", "--job", job, "--min-score", "60", junior, senior]) == 0
+    out = capsys.readouterr().out
+    assert "Asha Patel" in out and "Rahul Verma" not in out
+    assert main(["score", "--job", job, "--min-score", "101", senior]) == 1
+    assert "error" in capsys.readouterr().err
+
+
+def test_score_cli_report_files_match_filtered_ranking(tmp_path):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    junior = _write(tmp_path, "junior.txt", JUNIOR)
+    csv_path = str(tmp_path / "report.csv")
+    md_path = str(tmp_path / "report.md")
+    assert main(["score", "--job", job, "--min-score", "60",
+                 "--report-csv", csv_path, "--report-md", md_path,
+                 junior, senior]) == 0
+    csv_text = (tmp_path / "report.csv").read_text()
+    assert "Asha Patel" in csv_text and "Rahul Verma" not in csv_text
+    md_text = (tmp_path / "report.md").read_text()
+    assert "Screening report: Backend Engineer (Python)" in md_text
+    assert "Candidates: 1" in md_text
+
+
+def test_score_cli_anonymize_and_report_json(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    junior = _write(tmp_path, "junior.txt", JUNIOR)
+    json_path = str(tmp_path / "report.json")
+    assert main(["score", "--job", job, "--anonymize",
+                 "--report-json", json_path, junior, senior]) == 0
+    out = capsys.readouterr().out
+    assert "Candidate 1" in out and "Asha Patel" not in out
+    payload = json.loads((tmp_path / "report.json").read_text())
+    assert payload[0]["name"] == "Candidate 1" and payload[0]["email"] == ""
+    assert payload[0]["score"] == 100.0
+
+
 def test_score_cli_missing_job_fails(tmp_path, capsys):
     resume = _write(tmp_path, "r.txt", SENIOR)
     assert main(["score", "--job", str(tmp_path / "nope.json"), resume]) == 1

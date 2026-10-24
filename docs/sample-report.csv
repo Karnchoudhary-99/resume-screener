@@ -1,0 +1,2 @@
+rank,name,email,score,verdict,experience_years,skills_pct,experience_pct,education_pct,matched_skills,missing_skills,preferred_matched
+1,Asha Patel,asha.patel@example.com,100.0,Strong match,7.4,100.0,100.0,100.0,Python; FastAPI; PostgreSQL; Docker,,Redis; pytest

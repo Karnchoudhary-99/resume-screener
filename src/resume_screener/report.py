@@ -1,0 +1,191 @@
+"""Screening reports: shortlists and shareable report files.
+
+The score CLI prints a ranking, but a hiring loop needs something it can
+file away and forward: a shortlist (who clears the bar) and a report file
+(CSV for a spreadsheet, Markdown for a readable record). This module
+keeps both out of the CLI so they are testable on their own.
+
+A shortlist is a threshold filter, nothing more: a candidate clears it
+when their total is at least ``min_score``. The threshold is inclusive
+— a candidate scoring exactly the bar is in — and it must be a real
+0–100 number, otherwise the caller gets a ``ValueError`` instead of a
+silently empty or silently full list.
+"""
+
+from __future__ import annotations
+
+import csv
+from dataclasses import replace
+
+from .ranking import verdict
+from .scoring import Score
+
+__all__ = [
+    "anonymize", "render_markdown", "shortlist", "summary",
+    "write_csv", "write_markdown",
+]
+
+#: Verdict bands in strongest-first order, for summary presentation.
+_VERDICT_ORDER = ["Strong match", "Good match", "Partial match", "Weak match"]
+
+
+#: CSV columns, in order. Component columns are 0–100 percentages and
+#: are left blank when the job does not define that component, so a
+#: blank always means "not scored", never "scored zero".
+CSV_COLUMNS = [
+    "rank", "name", "email", "score", "verdict", "experience_years",
+    "skills_pct", "experience_pct", "education_pct",
+    "matched_skills", "missing_skills", "preferred_matched",
+]
+
+
+def shortlist(scores: list[Score], min_score: float) -> list[Score]:
+    """Return the scores at or above ``min_score``, in the given order.
+
+    The input order is preserved (callers pass an already-ranked list);
+    this function only filters, it never re-sorts.
+    """
+    if min_score != min_score or min_score < 0 or min_score > 100:
+        raise ValueError("min_score must be a number between 0 and 100")
+    return [s for s in scores if s.total >= min_score]
+
+
+def _pct(components: dict[str, float], name: str) -> str:
+    """A component as a 0–100 string, or blank when not scored."""
+    if name not in components:
+        return ""
+    return f"{components[name] * 100:.1f}"
+
+
+def _row(rank: int, score: Score) -> dict[str, str]:
+    """One CSV row for a ranked score; the csv module does the quoting."""
+    return {
+        "rank": str(rank),
+        "name": score.resume.name or score.resume.source,
+        "email": score.resume.email,
+        "score": f"{score.total:.1f}",
+        "verdict": verdict(score.total),
+        "experience_years": f"{score.resume.experience_years:g}",
+        "skills_pct": _pct(score.components, "skills"),
+        "experience_pct": _pct(score.components, "experience"),
+        "education_pct": _pct(score.components, "education"),
+        "matched_skills": "; ".join(score.matched_skills),
+        "missing_skills": "; ".join(score.missing_skills),
+        "preferred_matched": "; ".join(score.preferred_matched),
+    }
+
+
+def anonymize(scores: list[Score]) -> list[Score]:
+    """Return copies with identities stripped for blind review.
+
+    Ranked order is preserved, so "Candidate 1" is still the top scorer,
+    but names, emails, phones, profile links and source paths are gone.
+    The original scores are untouched — this builds new objects.
+    """
+    anonymized = []
+    for i, score in enumerate(scores, start=1):
+        contact = replace(
+            score.resume.contact, name=f"Candidate {i}", email="",
+            phone="", linkedin="", github="",
+        )
+        resume = replace(score.resume, contact=contact, source="")
+        anonymized.append(replace(score, resume=resume))
+    return anonymized
+
+
+def summary(scores: list[Score]) -> dict:
+    """Aggregate statistics for a ranked list: count, mean score, the
+    number of candidates per verdict band, and the mean of each scored
+    component (over only the candidates who were scored on it)."""
+    if not scores:
+        return {
+            "count": 0, "mean_score": 0.0,
+            "verdict_counts": {}, "mean_components": {},
+        }
+    verdict_counts: dict[str, int] = {}
+    component_sums: dict[str, float] = {}
+    component_counts: dict[str, int] = {}
+    for score in scores:
+        band = verdict(score.total)
+        verdict_counts[band] = verdict_counts.get(band, 0) + 1
+        for name, value in score.components.items():
+            component_sums[name] = component_sums.get(name, 0.0) + value
+            component_counts[name] = component_counts.get(name, 0) + 1
+    return {
+        "count": len(scores),
+        "mean_score": round(sum(s.total for s in scores) / len(scores), 1),
+        "verdict_counts": verdict_counts,
+        "mean_components": {
+            name: round(component_sums[name] / component_counts[name], 3)
+            for name in component_sums
+        },
+    }
+
+
+def _cell(text: str) -> str:
+    """Escape a value for a Markdown table cell."""
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def render_markdown(job_title: str, scores: list[Score]) -> str:
+    """Render ranked scores as a Markdown screening report.
+
+    A ranked table first (the short version a manager scans), then one
+    section per candidate with the reasons behind the score — the same
+    explanations the CLI prints, so the file never disagrees with it.
+    """
+    lines = [f"# Screening report: {job_title}", ""]
+    if not scores:
+        lines.append("No candidates were scored.")
+        return "\n".join(lines) + "\n"
+    stats = summary(scores)
+    lines.append(
+        f"Candidates: {stats['count']} · Mean score: {stats['mean_score']:.1f}"
+    )
+    ordered = [
+        f"{band} ×{stats['verdict_counts'][band]}"
+        for band in _VERDICT_ORDER if band in stats["verdict_counts"]
+    ]
+    if ordered:
+        lines.append("Verdicts: " + ", ".join(ordered) + ".")
+    lines.append("")
+    lines.append("| Rank | Candidate | Score | Verdict | Experience |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for rank, score in enumerate(scores, start=1):
+        name = _cell(score.resume.name or score.resume.source)
+        lines.append(
+            f"| {rank} | {name} | {score.total:.1f} | "
+            f"{verdict(score.total)} | {score.resume.experience_years:g} years |"
+        )
+    for rank, score in enumerate(scores, start=1):
+        name = score.resume.name or score.resume.source
+        lines.append("")
+        lines.append(f"## {rank}. {name} — {score.total:.1f}/100 "
+                     f"({verdict(score.total)})")
+        if score.components:
+            breakdown = ", ".join(
+                f"{k} {v * 100:.0f}%" for k, v in score.components.items()
+            )
+            lines.append(f"Components: {breakdown}.")
+        if score.matched_skills:
+            lines.append(f"Matched: {', '.join(score.matched_skills)}.")
+        if score.missing_skills:
+            lines.append(f"Missing: {', '.join(score.missing_skills)}.")
+        for line in score.explanations:
+            lines.append(f"- {line}")
+    return "\n".join(lines) + "\n"
+
+
+def write_markdown(job_title: str, scores: list[Score], path: str) -> None:
+    """Write :func:`render_markdown` output to ``path``."""
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(render_markdown(job_title, scores))
+
+
+def write_csv(scores: list[Score], path: str) -> None:
+    """Write ranked scores to ``path`` as CSV, best first, ranked 1..n."""
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        for rank, score in enumerate(scores, start=1):
+            writer.writerow(_row(rank, score))
