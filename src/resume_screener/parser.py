@@ -47,8 +47,28 @@ _HEADINGS = {
 }
 
 
-def parse_resume(text: str, source: str = "") -> Resume:
-    """Parse resume text into a :class:`Resume`."""
+_MONTHS = {
+    name: i + 1
+    for i, name in enumerate(
+        ["jan", "feb", "mar", "apr", "may", "jun",
+         "jul", "aug", "sep", "oct", "nov", "dec"]
+    )
+}
+_DATE_RANGE_RE = re.compile(
+    r"(?P<m1>[A-Za-z]{3,9})?\s*(?P<y1>\d{4})\s*[-–—]\s*"
+    r"(?:(?P<m2>[A-Za-z]{3,9})\s*)?(?P<y2>\d{4}|present|current|now)",
+    re.IGNORECASE,
+)
+
+
+def parse_resume(
+    text: str, source: str = "", as_of: date | None = None
+) -> Resume:
+    """Parse resume text into a :class:`Resume`.
+
+    ``as_of`` fixes "Present" in date ranges (defaults to today);
+    pass it in tests so experience years stay deterministic.
+    """
     contact = extract_contact(text)
     sections = split_sections(text)
     return Resume(
@@ -56,9 +76,51 @@ def parse_resume(text: str, source: str = "") -> Resume:
         raw_text=text,
         contact=contact,
         sections=sections,
-        skills=[],
-        experience_years=0.0,
+        skills=extract_skills(sections.get("skills", "")),
+        experience_years=experience_years(
+            sections.get("experience", ""), as_of=as_of or date.today()
+        ),
     )
+
+
+def extract_skills(skills_text: str) -> list[str]:
+    """Split a skills section into de-duplicated skill names."""
+    skills: list[str] = []
+    for chunk in re.split(r"[,;|•·\n]", skills_text):
+        skill = chunk.strip(" \t-•·")
+        # Drop bullet markers and full sentences; skills are short.
+        if not skill or len(skill) > 40 or "." in skill:
+            continue
+        if skill not in skills:
+            skills.append(skill)
+    return skills
+
+
+def experience_years(experience_text: str, as_of: date) -> float:
+    """Sum the date ranges in the experience section, in years.
+
+    Ranges like ``Jan 2020 - Dec 2022`` or ``2020 - Present`` count
+    inclusively by month; overlapping ranges are summed as written
+    (a resume-level approximation, documented, not hidden).
+    """
+    total_months = 0
+    for match in _DATE_RANGE_RE.finditer(experience_text):
+        start = _month_index(match.group("m1"), int(match.group("y1")))
+        end_text = match.group("y2").lower()
+        if end_text in {"present", "current", "now"}:
+            end = as_of.year * 12 + as_of.month
+        else:
+            end = _month_index(match.group("m2"), int(match.group("y2")))
+        if end >= start:
+            total_months += end - start + 1
+    return round(total_months / 12, 1)
+
+
+def _month_index(month_name: str | None, year: int) -> int:
+    month = 1
+    if month_name:
+        month = _MONTHS.get(month_name[:3].lower(), 1)
+    return year * 12 + month
 
 
 def split_sections(text: str) -> dict[str, str]:
