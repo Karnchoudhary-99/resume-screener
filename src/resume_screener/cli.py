@@ -19,6 +19,7 @@ from resume_screener.extractors import UnsupportedFormatError, extract_text
 from resume_screener.job import load_job
 from resume_screener.parser import parse_resume
 from resume_screener.ranking import rank, verdict
+from resume_screener.report import shortlist
 from resume_screener.scoring import score_resume
 
 
@@ -42,6 +43,10 @@ def main(argv=None) -> int:
     score_cmd.add_argument(
         "--top", type=int, default=None,
         help="Show only the top N candidates",
+    )
+    score_cmd.add_argument(
+        "--min-score", type=float, default=None,
+        help="Keep only candidates scoring at least this (0-100, inclusive)",
     )
     args = parser.parse_args(argv)
     if args.version:
@@ -98,6 +103,12 @@ def _cmd_score(args) -> int:
             return 1
         scores.append(score_resume(parse_resume(text, source=path), job))
     ranked = rank(scores)
+    if args.min_score is not None:
+        try:
+            ranked = shortlist(ranked, args.min_score)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     if args.top is not None:
         if args.top < 0:
             print("error: --top must not be negative", file=sys.stderr)

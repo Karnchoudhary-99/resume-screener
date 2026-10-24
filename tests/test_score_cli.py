@@ -96,6 +96,17 @@ def test_score_cli_json_and_top(tmp_path, capsys):
     assert payload[0]["score"] == 100.0
 
 
+def test_score_cli_min_score_filters_and_validates(tmp_path, capsys):
+    job = _write(tmp_path, "job.json", json.dumps(JOB))
+    senior = _write(tmp_path, "senior.txt", SENIOR)
+    junior = _write(tmp_path, "junior.txt", JUNIOR)
+    assert main(["score", "--job", job, "--min-score", "60", junior, senior]) == 0
+    out = capsys.readouterr().out
+    assert "Asha Patel" in out and "Rahul Verma" not in out
+    assert main(["score", "--job", job, "--min-score", "101", senior]) == 1
+    assert "error" in capsys.readouterr().err
+
+
 def test_score_cli_missing_job_fails(tmp_path, capsys):
     resume = _write(tmp_path, "r.txt", SENIOR)
     assert main(["score", "--job", str(tmp_path / "nope.json"), resume]) == 1
